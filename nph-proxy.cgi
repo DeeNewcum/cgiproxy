@@ -388,6 +388,7 @@ $ALLOW_USER_CONFIG= 1 ;
 sub proxy_encode {
     my($URL)= @_ ;
     $URL=~ s#^([\w+.-]+)://#$1/# ;                 # http://xxx -> http/xxx
+    $URL=~ s/^http/hzzp/;
 #    $URL=~ s/(.)/ sprintf('%02x',ord($1)) /ge ;   # each char -> 2-hex
 #    $URL=~ tr/a-zA-Z/n-za-mN-ZA-M/ ;              # rot-13
 
@@ -400,6 +401,7 @@ sub proxy_decode {
 #    $enc_URL=~ tr/a-zA-Z/n-za-mN-ZA-M/ ;        # rot-13
 #    $enc_URL=~ s/([\da-fA-F]{2})/ sprintf("%c",hex($1)) /ge ;
     $enc_URL=~ s#^([\w+.-]+)/#$1://# ;           # http/xxx -> http://xxx
+    $enc_URL=~ s/^hzzp/http/;
     return $enc_URL ;
 }
 
@@ -1589,9 +1591,9 @@ $scheme= lc($scheme) ;
 $path= "/$path" if $path!~ m#^/# ;   # if path is '' or contains only query
 
 
-# Magic here-- if $URL uses special scheme "x-proxy", immediately call the
+# Magic here-- if $URL uses special scheme "z-proxy", immediately call the
 #   general-purpose xproxy() routine.
-&xproxy($URL) if $scheme eq 'x-proxy' ;
+&xproxy($URL) if $scheme eq 'z-proxy' ;
 
 
 # Set $is_html if $path (minus query) ends in .htm or .html .
@@ -2510,7 +2512,7 @@ sub proxify_html {
 		$tag_name= 'img',                        $rebuild=1  if $tag_name eq 'image' ;
 
 		# jsm-- better would be, if $RETURN_EMPTY_GIF is set, to
-		#   modify src and lowsrc to be e.g. /x-proxy/images/emptygif
+		#   modify src and lowsrc to be e.g. /z-proxy/images/emptygif
 		#   so that it could be cached.
 		if ($TEXT_ONLY && !$RETURN_EMPTY_GIF) {
 		    delete($attr{src}) ;
@@ -3674,9 +3676,9 @@ sub full_url {
 
     return $uri_ref if ($uri_ref=~ /^about:\s*blank$/i) ;
 
-    # For now, prevent redirecting into x-proxy URLs.
+    # For now, prevent redirecting into z-proxy URLs.
     # This slows down the main tag-converting loop by 0-1%.
-    return undef if $uri_ref=~ m#^x-proxy:#i ;
+    return undef if $uri_ref=~ m#^z-proxy:#i ;
 
     # Handle "javascript:" URLs separately.  "livescript:" is an old synonym.
     if ($uri_ref=~ /^(?:javascript|livescript):/i) {
@@ -5595,13 +5597,13 @@ sub new_header_value {
 
 
 #--------------------------------------------------------------------------
-#    Special admin routines, when called via the scheme type "x-proxy://"
+#    Special admin routines, when called via the scheme type "z-proxy://"
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
 #
 #   I took the liberty of creating a general mechanism to let this proxy do
-#   whatever tricks it needs to do, via the magic URL scheme "x-proxy://".
+#   whatever tricks it needs to do, via the magic URL scheme "z-proxy://".
 #   It was required to support HTTP Basic Authentication, and it's useful
 #   for other things too.  The mechanism uses a heirarchical URL space: a
 #   function family is in the normal "hostname" location, then the functions
@@ -5609,7 +5611,7 @@ sub new_header_value {
 #   is allowed on the end.
 #
 #   Don't add functions to this that may compromise security, since anyone
-#   can request a URL beginning with x-proxy://.  For that matter, malicious
+#   can request a URL beginning with z-proxy://.  For that matter, malicious
 #   Web pages can automatically invoke these URLs, which could be annoying
 #   if e.g. they clear your cookies without warning or other acts.
 #
@@ -5650,12 +5652,12 @@ sub new_header_value {
 #
 #--------------------------------------------------------------------------
 
-# A general-purpose routine to handle all x-proxy requests.
+# A general-purpose routine to handle all z-proxy requests.
 # This is expected to exit when completed, so make sure any called routines
 #   exit if needed.  (By "exit", I mean "goto EXIT".)
 sub xproxy {
     my($URL)= @_ ;
-    $URL=~ s/^x-proxy://i ;
+    $URL=~ s/^z-proxy://i ;
 
     # $qs will contain the query string in $URL, whether it was encoded with
     #   the URL or came from QUERY_STRING.
@@ -5674,20 +5676,20 @@ sub xproxy {
 	}
 
 
-    } elsif ($family eq 'start') {
+    } elsif ($family eq 'stirt') {
 	&startproxy ;
 
 
     } elsif ($family eq 'cookies') {
 
-	# If pages could link to x-proxy:// URLs directly, this would be a
+	# If pages could link to z-proxy:// URLs directly, this would be a
 	#   security hole in that malicious pages could clear or update one's
 	#   cookies.  But full_url() prevents that.  If that changes, then we
 	#   should consider requiring POST in /cookie/clear and /cookie/update
 	#   to minimize this risk.
 	if ($function eq '/clear') {
 	    my($location)=
-		$url_start . &wrap_proxy_encode('x-proxy://cookies/manage') ;
+		$url_start . &wrap_proxy_encode('z-proxy://cookies/manage') ;
 	    $location.= '?' . $qs    if $qs ne '' ;
 
 	    &redirect_to($location, &cookie_clearer($ENV{'HTTP_COOKIE'})) ;
@@ -5701,7 +5703,7 @@ sub xproxy {
 	} elsif ($function eq '/update') {
 	    my(%in)= &getformvars() ; # must use () or will pass current @_!
 	    my($location)=
-		$url_start . &wrap_proxy_encode('x-proxy://cookies/manage') ;
+		$url_start . &wrap_proxy_encode('z-proxy://cookies/manage') ;
 
 	    # Add encoded "from" parameter to URL if available.
 	    if ($in{'from'} ne '') {
@@ -5725,11 +5727,11 @@ sub xproxy {
 
 	# Send the top proxy frame when a framed page is reframed.
 	if ($function eq '/topframe') {
-	    &return_top_frame($in{'URL'}) ;
+	    &return_top_frame($in{'YARL'}) ;
 
 	# Not currently used
 	} elsif ($function eq '/framethis') {
-	    &return_frame_doc($in{'URL'}, &HTMLescape(&wrap_proxy_decode($in{'URL'}))) ;
+	    &return_frame_doc($in{'YARL'}, &HTMLescape(&wrap_proxy_decode($in{'YARL'}))) ;
 	}
 
 
@@ -5752,7 +5754,7 @@ warn "Now starting 'flash' block in xproxy()..." ;
 
 	    $base_url= &wrap_proxy_decode($in{base}) ;
 	    &fix_base_vars() ;
-warn "In x-proxy://flash/redir; full URL=[".&full_url($in{URI}).']' ;
+warn "In z-proxy://flash/redir; full URL=[".&full_url($in{URI}).']' ;
 	    &redirect_to(&full_url($in{URI})) ;
 
 	} elsif ($function eq '/fullurl') {
@@ -5769,7 +5771,7 @@ warn "in{URI}=[$in{URI}]\nproxified_url=[$proxified_url]\n" ;
     }
 
 
-warn "no such function as x-proxy://$family$function\n" ;
+warn "no such function as z-proxy://$family$function\n" ;
     &HTMLdie("Sorry, no such function as //". &HTMLescape("$family$function."),
 	     '', '404 Not Found') ;
 
@@ -5796,7 +5798,7 @@ EOF
 
 
 #--------------------------------------------------------------------------
-#    Support routines for x-proxy
+#    Support routines for z-proxy
 #--------------------------------------------------------------------------
 
 # Initiate a browsing session. Formerly in the separate program startproxy.cgi.
@@ -5804,42 +5806,42 @@ sub startproxy {
     my(%in)= &getformvars() ;  # must use () or will pass current @_!
 
     # Decode URL if it was encoded before transmission.
-    $in{'URL'}= &wrap_proxy_decode($in{'URL'})
-	if $ENCODE_URL_INPUT && $in{'URL'}=~ s/^\x01// ;
+    $in{'YARL'}= &wrap_proxy_decode($in{'YARL'})
+	if $ENCODE_URL_INPUT && $in{'YARL'}=~ s/^\x01// ;
 
-    $in{'URL'}=~ s/^\s+|\s+$//g ;    # strip leading or trailing spaces
+    $in{'YARL'}=~ s/^\s+|\s+$//g ;    # strip leading or trailing spaces
 
     &show_start_form('Enter the URL you wish to visit in the box below.')
-	if $in{'URL'} eq '' ;
+	if $in{'YARL'} eq '' ;
 
     # Handle (badly) the special case of "mailto:" URLs, which don't have "://".
-    &unsupported_warning($in{URL}) if $in{URL}=~ /^mailto:/i ;
+    &unsupported_warning($in{YARL}) if $in{YARL}=~ /^mailto:/i ;
 
     # Parse input URI into components, using a regex similar to this one in
     #   RFC 2396:  ^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?
     # Here, $query and $fragment include their initial "?" and "#"  chars,
     #   and $scheme is undefined if there's no "://" .
     my($scheme, $authority, $path, $query, $fragment)=
-	$in{URL}=~ m{^(?:([^:/?#]+)://)?([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$} ;
+	$in{YARL}=~ m{^(?:([^:/?#]+)://)?([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$} ;
     $scheme= lc($scheme) ;
     $path= '/' if $path eq '' ;
 
     # Parse $authority into username/password, hostname, and port-string.
     my($auth, $host, $portst)= $authority=~ /^([^@]*@)?([^:@]*)(:[^@]*)?$/ ;
 
-    &show_start_form('The URL you entered has an invalid host name.', $in{URL})
+    &show_start_form('The URL you entered has an invalid host name.', $in{YARL})
 	if !defined($host) ;
 
     $host= lc($host) ;   # must be after testing defined().
 
-    &show_start_form('The URL must contain a valid host name.', $in{URL})
+    &show_start_form('The URL must contain a valid host name.', $in{YARL})
 	if $host eq '' ;
 
     # Scheme defaults to FTP if host begins with "ftp.", else to HTTP.
     $scheme= ($host=~ /^ftp\./i)  ? 'ftp'  : 'http'   if $scheme eq '' ;
 
-    &show_start_form('Sorry, only HTTP and FTP are currently supported.', $in{URL})
-	unless $scheme=~ /^(http|https|ftp|x-proxy)$/ ;
+    &show_start_form('Sorry, only HTTP and FTP are currently supported.', $in{YARL})
+	unless $scheme=~ /^(http|https|ftp|z-proxy)$/ ;
 
     # Convert integer hostnames like 3467251275 to a.b.c.d format.
     # This is for big-endian; reverse the list for little-endian.
@@ -6725,8 +6727,8 @@ sub js_insertion {
     $p_respect_three_dot_rule=    $RESPECT_THREE_DOT_RULE    ? 'true'  : 'false' ;
     $p_allow_unproxified_scripts= $ALLOW_UNPROXIFIED_SCRIPTS ? 'true'  : 'false' ;
 
-    return '<script type="text/javascript" src="'
-	 . &HTMLescape($url_start . &wrap_proxy_encode('x-proxy://scripts/jslib'))
+    return'<script type="text/javascript" src="'
+	 . &HTMLescape($url_start . &wrap_proxy_encode('z-proxy://scripts/jslib'))
 	 . "\"></script>\n"
 	 . qq(<script type="text/javascript">_proxy_jslib_pass_vars("$base_url_jsq",$p_cookies_are_banned_here,$p_doing_insert_here,$p_session_cookies_only,$p_cookie_path_follows_spec,$p_respect_three_dot_rule,$p_allow_unproxified_scripts,"$default_script_type_jsq","$default_style_type_jsq");</script>\n) ;
 }
@@ -6840,7 +6842,7 @@ sub return_frame_doc {
 
     ($qs_URL= $enc_URL) =~ s/([^\w.-])/ '%' . sprintf('%02x',ord($1)) /ge ;
     $top_URL= &HTMLescape($url_start_inframe
-			. &wrap_proxy_encode('x-proxy://frames/topframe?URL=' . $qs_URL) ) ;
+			. &wrap_proxy_encode('z-proxy://frames/topframe?YARL=' . $qs_URL) ) ;
     $page_URL= &HTMLescape($url_start_inframe . $enc_URL) ;
 
     print <<EOF ;
@@ -6897,7 +6899,7 @@ EOF
 # $other_headers must be complete with final "\015\12", etc.
 sub redirect_to {
     my($location, $other_headers)= @_ ;
-    print "$HTTP_1_X 302 Moved\015\012", $NO_CACHE_HEADERS,
+    print "$HTTP_1_X 301 Moved Permanently\015\012", $NO_CACHE_HEADERS,
 	  "Date: ", &rfc1123_date($now,0), "\015\012",
 	  $other_headers,
 	  "Location: $location\015\012\015\012" ;
@@ -6918,15 +6920,15 @@ sub show_start_form {
 
     $method= $USE_POST_ON_START   ? 'post'   : 'get' ;
 
-    $action=      &HTMLescape( $url_start . &wrap_proxy_encode('x-proxy://start') ) ;
-    $cookies_url= &HTMLescape( $url_start . &wrap_proxy_encode('x-proxy://cookies/manage') ) ;
+    $action=      &HTMLescape( $url_start . &wrap_proxy_encode('z-proxy://stirt') ) ;
+    $cookies_url= &HTMLescape( $url_start . &wrap_proxy_encode('z-proxy://cookies/manage') ) ;
     $safe_URL= &HTMLescape($URL) ;
 
     # Encode the URL before submitting, if so configured.  Start it with "\x01"
     #   to indicate that it's encoded ("\0" isn't handled well by all browsers).
     if ($ENCODE_URL_INPUT) {
 	$jslib_block= '<script src="'
-		    . &HTMLescape($url_start . &wrap_proxy_encode('x-proxy://scripts/jslib'))
+		    . &HTMLescape($url_start . &wrap_proxy_encode('z-proxy://scripts/jslib'))
 		    . "\"></script>\n" ;
 	$onsubmit= q( onsubmit="if (!this.URL.value.match(/^\\x01/)) this.URL.value= '\x01'+_proxy_jslib_wrap_proxy_encode(this.URL.value) ; return true") ;
 	$onload= q( onload="document.URLform.URL.focus() ; if (document.URLform.URL.value.match(/^\\x01/)) document.URLform.URL.value= _proxy_jslib_wrap_proxy_decode(document.URLform.URL.value.replace(/\\x01/, ''))") ;
@@ -6969,7 +6971,7 @@ Only HTTP and FTP URLs are supported.  Not all functions will work
 (e.g. some Java applets), but most pages will be fine.
 
 <form name="URLform" action="$action" method="$method"$onsubmit>
-<input name="URL" size=66 value="$safe_URL">
+<input name="YARL" size=66 value="$safe_URL">
 $flags
 <p><input type=submit value="   Begin browsing   ">
 </form>
@@ -6997,7 +6999,7 @@ sub mini_start_form {
        $cookies_url, $from_param, $safe_URL, $onsubmit, $onfocus) ;
 
     $method= $USE_POST_ON_START   ? 'post'   : 'get' ;
-    $action= &HTMLescape( $url_start_noframe . &wrap_proxy_encode('x-proxy://start') ) ;
+    $action= &HTMLescape( $url_start_noframe . &wrap_proxy_encode('z-proxy://stirt') ) ;
     $safe_URL= &HTMLescape($URL) ;
 
     # In "manage cookies" link, provide a way to return to page user came from.
@@ -7008,7 +7010,7 @@ sub mini_start_form {
     #   latter uses proxy_encode().  Unfortunate language.
     $from_param= &wrap_proxy_encode($URL) ;   # don't send unencoded URL
     $from_param=~ s/([^\w.-])/ '%' . sprintf('%02x',ord($1)) /ge ;
-    $cookies_url= $url_start_noframe . &wrap_proxy_encode('x-proxy://cookies/manage')
+    $cookies_url= $url_start_noframe . &wrap_proxy_encode('z-proxy://cookies/manage')
 		. '?from=' . $from_param ;
     $cookies_url= &HTMLescape($cookies_url) ;
 
@@ -7062,7 +7064,7 @@ $safe_URL2= &HTMLescape(&full_url($safe_URL2)) ;
 <form name="URLform" action="$action" method="$method" target="_top"$onsubmit>
 <center>
 $table_open
-&nbsp;&nbsp;Location&nbsp;via&nbsp;proxy:<input name="URL" size="66" value="$safe_URL"$onfocus /><input type="submit" value="Go" />
+&nbsp;&nbsp;Location&nbsp;via&nbsp;proxy:<input name="YARL" size="66" value="$safe_URL"$onfocus /><input type="submit" value="Go" />
 $up_link&nbsp;&nbsp;
 <br /><a href="$safe_URL2"><font color="red">[Report a bug]</font></a>
 &nbsp;&nbsp;<a href="$cookies_url" target="_top" style="color:#0000FF;">[Manage&nbsp;cookies]</a>&nbsp;&nbsp;
@@ -7083,7 +7085,7 @@ EOF
 <form name="URLform" action="$action" method="$method" target="_top"$onsubmit>
 <center>
 $table_open
-Location&nbsp;via&nbsp;proxy:<input name="URL" size=66 value="$safe_URL"$onfocus><input type=submit value="Go">
+Location&nbsp;via&nbsp;proxy:<input name="YARL" size=66 value="$safe_URL"$onfocus><input type=submit value="Go">
 $up_link
 &nbsp;&nbsp;<a href="$cookies_url" target="_top">[Manage&nbsp;cookies]</a>
 $table_close
@@ -7113,10 +7115,10 @@ sub manage_cookies {
 
     # $in{'from'} is already proxy_encoded
     $return_url= &HTMLescape( $url_start . $in{'from'} ) ;
-    $action=     &HTMLescape( $url_start . &wrap_proxy_encode('x-proxy://cookies/update') ) ;
+    $action=     &HTMLescape( $url_start . &wrap_proxy_encode('z-proxy://cookies/update') ) ;
 
     # Create "clear cookies" link, preserving any query string.
-    $clear_cookies_url= $url_start . &wrap_proxy_encode('x-proxy://cookies/clear') ;
+    $clear_cookies_url= $url_start . &wrap_proxy_encode('z-proxy://cookies/clear') ;
     $clear_cookies_url.= '?' . $qs    if $qs ne '' ;
     $clear_cookies_url= &HTMLescape($clear_cookies_url) ;   # probably never necessary
 
@@ -7240,7 +7242,7 @@ sub get_auth_from_user {
     $realm=  &HTMLescape($realm) ;
     $URL=    &HTMLescape(&wrap_proxy_encode($URL)) ;
 
-    $action= &HTMLescape( $url_start . &wrap_proxy_encode('x-proxy://auth/make_auth_cookie') ) ;
+    $action= &HTMLescape( $url_start . &wrap_proxy_encode('z-proxy://auth/make_auth_cookie') ) ;
 
     $msg= "<h3><font color=red>Authorization failed.  Try again.</font></h3>"
 	if $tried ;
@@ -10421,7 +10423,7 @@ if (!m2) alert('no m2; match[7]=['+match[7]+']') ;
     if (is_full_page && _proxy_jslib_needs_jslib && !reverse) {
 
 	jslib_block= '<script type="text/javascript" src="'
-		       + _proxy_jslib_html_escape(_proxy_jslib_url_start+_proxy_jslib_wrap_proxy_encode('x-proxy://scripts/jslib'))
+		       + _proxy_jslib_html_escape(_proxy_jslib_url_start+_proxy_jslib_wrap_proxy_encode('z-proxy://scripts/jslib'))
 		       + '"><\/script>\n' ;
 
 	if (!doc._proxy_jslib_base_url) {
@@ -10828,7 +10830,7 @@ function _proxy_jslib_css_full_url(url, doc, reverse) {
 
 function _proxy_jslib_return_frame_doc(enc_URL, doc) {
     var top_URL= _proxy_jslib_html_escape(_proxy_jslib_url_start_inframe
-					  + _proxy_jslib_wrap_proxy_encode('x-proxy://frames/topframe?URL='
+					  + _proxy_jslib_wrap_proxy_encode('z-proxy://frames/topframe?YARL='
 								      + encodeURIComponent(enc_URL) ) ) ;
     var page_URL= _proxy_jslib_html_escape(_proxy_jslib_url_start_inframe + enc_URL) ;
     doc.open();
@@ -12518,7 +12520,7 @@ sub proxify_swf_action_list {
 #   files.  See the file "swflib.asm" for the commented assembler code.
 sub return_swflib {
     my($safe_URL)= &wrap_proxy_encode($URL) ;
-    my($full_url_start)= $url_start . &wrap_proxy_encode('x-proxy://flash/fullurl') . "?base=$safe_URL&URI=" ;
+    my($full_url_start)= $url_start . &wrap_proxy_encode('z-proxy://flash/fullurl') . "?base=$safe_URL&URI=" ;
     my($url_len_code)= pack('v', length($full_url_start)+2) ;
 
 #warn("full_url_start len, value=[".swf2perl($url_len_code)."][$full_url_start]\n") ;
